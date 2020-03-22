@@ -14,7 +14,7 @@ import mock
 import uuid
 
 from knack.util import CLIError
-from azure_devtools.scenario_tests import AllowLargeResponse, record_only
+from azure_devtools.scenario_tests import AllowLargeResponse, record_only, live_only
 from azure.cli.core.profiles import ResourceType
 from azure.cli.testsdk import (
     ScenarioTest, ResourceGroupPreparer, LiveScenarioTest, api_version_constraint,
@@ -1214,10 +1214,12 @@ class VMMonitorTestDefault(ScenarioTest):
         self.kwargs.update({
             'vm': 'monitorvm',
             'workspace': self.create_random_name('cliworkspace', 20),
-            'rg': resource_group
+            'rg': resource_group,
+            'nsg': self.create_random_name('clinsg', 20)
         })
+        self.cmd('network nsg create -g {rg} -n {nsg}')
         with mock.patch('azure.cli.command_modules.vm.custom._gen_guid', side_effect=self.create_guid):
-            self.cmd('vm create -n {vm} -g {rg} --image UbuntuLTS --workspace {workspace}')
+            self.cmd('vm create -n {vm} -g {rg} --image UbuntuLTS --workspace {workspace} --nsg {nsg}')
         self.cmd('vm monitor log show -n {vm} -g {rg} -q "Perf | limit 10"')
 
     @ResourceGroupPreparer(name_prefix='cli_test_vm_metric_tail', location='eastus')
@@ -1225,10 +1227,11 @@ class VMMonitorTestDefault(ScenarioTest):
 
         self.kwargs.update({
             'vm': 'monitorvm',
-            'rg': resource_group
+            'rg': resource_group,
+            'nsg': self.create_random_name('clinsg', 20)
         })
-
-        self.cmd('vm create -n {vm} -g {rg} --image UbuntuLTS')
+        self.cmd('network nsg create -g {rg} -n {nsg}')
+        self.cmd('vm create -n {vm} -g {rg} --image UbuntuLTS --nsg {nsg}')
         self.cmd('vm start -n {vm} -g {rg}')
 
         time.sleep(60)
@@ -1242,7 +1245,7 @@ class VMMonitorTestDefault(ScenarioTest):
         ])
 
 
-class VMMonitorTestLinux(ScenarioTest):
+class VMMonitorTestCreateLinux(ScenarioTest):
 
     @ResourceGroupPreparer(name_prefix='cli_test_vm_create_with_workspace_linux', location='eastus')
     def test_vm_create_with_workspace_linux(self, resource_group):
@@ -1250,10 +1253,12 @@ class VMMonitorTestLinux(ScenarioTest):
         self.kwargs.update({
             'vm': 'monitorvm',
             'workspace': self.create_random_name('cliworkspace', 20),
-            'rg': resource_group
+            'rg': resource_group,
+            'nsg': self.create_random_name('clinsg', 20)
         })
+        self.cmd('network nsg create -g {rg} -n {nsg}')
         with mock.patch('azure.cli.command_modules.vm.custom._gen_guid', side_effect=self.create_guid):
-            self.cmd('vm create -n {vm} -g {rg} --image UbuntuLTS --workspace {workspace}')
+            self.cmd('vm create -n {vm} -g {rg} --image UbuntuLTS --workspace {workspace} --nsg {nsg}')
 
         workspace_id = self.cmd('monitor log-analytics workspace show -n {workspace} -g {rg}').get_output_in_json()['id']
         uri_template = "https://management.azure.com{0}/dataSources?$filter=kind eq '{1}'&api-version=2015-11-01-preview"
@@ -1278,7 +1283,7 @@ class VMMonitorTestLinux(ScenarioTest):
         ])
 
 
-class VMMonitorTestWindows(ScenarioTest):
+class VMMonitorTestCreateWindows(ScenarioTest):
 
     @ResourceGroupPreparer(name_prefix='cli_test_vm_create_with_workspace_windows', location='eastus')
     def test_vm_create_with_workspace_windows(self, resource_group):
@@ -1286,10 +1291,12 @@ class VMMonitorTestWindows(ScenarioTest):
         self.kwargs.update({
             'vm': 'monitorvm',
             'workspace': self.create_random_name('cliworkspace', 20),
-            'rg': resource_group
+            'rg': resource_group,
+            'nsg': self.create_random_name('clinsg', 20)
         })
+        self.cmd('network nsg create -g {rg} -n {nsg}')
         with mock.patch('azure.cli.command_modules.vm.custom._gen_guid', side_effect=self.create_guid):
-            self.cmd('vm create -n {vm} -g {rg} --image Win2016Datacenter --workspace {workspace} --admin-password AzureCLI@1224')
+            self.cmd('vm create -n {vm} -g {rg} --image Win2016Datacenter --workspace {workspace} --admin-password AzureCLI@1224 --nsg {nsg}')
 
         workspace_id = self.cmd('monitor log-analytics workspace show -n {workspace} -g {rg}').get_output_in_json()[
             'id']
@@ -1303,6 +1310,127 @@ class VMMonitorTestWindows(ScenarioTest):
         self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
             self.check('length(value)', 15)
         ])
+
+
+class VMMonitorTestUpdateLinux(ScenarioTest):
+
+    @ResourceGroupPreparer(name_prefix='cli_test_vm_update_with_workspace_linux', location='eastus')
+    def test_vm_update_with_workspace_linux(self, resource_group):
+
+        self.kwargs.update({
+            'vm': 'monitorvm',
+            'workspace1': self.create_random_name('cliworkspace', 20),
+            'workspace2': self.create_random_name('cliworkspace', 20),
+            'rg': resource_group,
+            'nsg': self.create_random_name('clinsg', 20)
+        })
+        self.cmd('network nsg create -g {rg} -n {nsg}')
+        self.cmd('vm create -n {vm} -g {rg} --image UbuntuLTS --nsg {nsg}')
+        with mock.patch('azure.cli.command_modules.vm.custom._gen_guid', side_effect=self.create_guid):
+            self.cmd('vm update -n {vm} -g {rg} --workspace {workspace1}')
+
+        workspace_id = self.cmd('monitor log-analytics workspace show -n {workspace1} -g {rg}').get_output_in_json()['id']
+        uri_template = "https://management.azure.com{0}/dataSources?$filter=kind eq '{1}'&api-version=2015-11-01-preview"
+        uri = uri_template.format(workspace_id, 'LinuxPerformanceCollection')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 1)
+        ])
+
+        uri = uri_template.format(workspace_id, 'LinuxSyslog')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 1)
+        ])
+
+        uri = uri_template.format(workspace_id, 'LinuxSyslogCollection')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 1)
+        ])
+
+        uri = uri_template.format(workspace_id, 'LinuxPerformanceObject')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 4)
+        ])
+
+        self.cmd('vm monitor log show -n {vm} -g {rg} -q "Perf"')
+
+        self.cmd('monitor log-analytics workspace create -n {workspace2} -g {rg}')
+        with mock.patch('azure.cli.command_modules.vm.custom._gen_guid', side_effect=self.create_guid):
+            self.cmd('vm update -n {vm} -g {rg} --workspace {workspace2}')
+
+        workspace_id = self.cmd('monitor log-analytics workspace show -n {workspace2} -g {rg}').get_output_in_json()['id']
+        uri_template = "https://management.azure.com{0}/dataSources?$filter=kind eq '{1}'&api-version=2015-11-01-preview"
+        uri = uri_template.format(workspace_id, 'LinuxPerformanceCollection')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 1)
+        ])
+
+        uri = uri_template.format(workspace_id, 'LinuxSyslog')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 1)
+        ])
+
+        uri = uri_template.format(workspace_id, 'LinuxSyslogCollection')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 1)
+        ])
+
+        uri = uri_template.format(workspace_id, 'LinuxPerformanceObject')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 4)
+        ])
+
+        self.cmd('vm monitor log show -n {vm} -g {rg} -q "Perf"')
+
+
+class VMMonitorTestUpdateWindows(ScenarioTest):
+
+    @live_only()
+    @ResourceGroupPreparer(name_prefix='cli_test_vm_update_with_workspace_windows', location='eastus')
+    def test_vm_update_with_workspace_windows(self, resource_group):
+
+        self.kwargs.update({
+            'vm': 'monitorvm',
+            'workspace1': self.create_random_name('cliworkspace', 20),
+            'workspace2': self.create_random_name('cliworkspace', 20),
+            'rg': resource_group,
+            'nsg': self.create_random_name('clinsg', 20)
+        })
+        self.cmd('network nsg create -g {rg} -n {nsg}')
+        self.cmd('vm create -n {vm} -g {rg} --image Win2016Datacenter --admin-password AzureCLI@1224 --nsg {nsg}')
+        with mock.patch('azure.cli.command_modules.vm.custom._gen_guid', side_effect=self.create_guid):
+            self.cmd('vm update -n {vm} -g {rg} --workspace {workspace1}')
+
+        workspace_id = self.cmd('monitor log-analytics workspace show -n {workspace1} -g {rg}').get_output_in_json()['id']
+        uri_template = "https://management.azure.com{0}/dataSources?$filter=kind eq '{1}'&api-version=2015-11-01-preview"
+        uri = uri_template.format(workspace_id, 'WindowsEvent')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 1)
+        ])
+
+        uri = uri_template.format(workspace_id, 'WindowsPerformanceCounter')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 15)
+        ])
+
+        self.cmd('vm monitor log show -n {vm} -g {rg} -q "Perf"')
+
+        self.cmd('monitor log-analytics workspace create -n {workspace2} -g {rg}')
+        with mock.patch('azure.cli.command_modules.vm.custom._gen_guid', side_effect=self.create_guid):
+            self.cmd('vm update -n {vm} -g {rg} --workspace {workspace2}')
+
+        workspace_id = self.cmd('monitor log-analytics workspace show -n {workspace2} -g {rg}').get_output_in_json()['id']
+        uri_template = "https://management.azure.com{0}/dataSources?$filter=kind eq '{1}'&api-version=2015-11-01-preview"
+        uri = uri_template.format(workspace_id, 'WindowsEvent')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 1)
+        ])
+
+        uri = uri_template.format(workspace_id, 'WindowsPerformanceCounter')
+        self.cmd("az rest --method get --uri \"{}\"".format(uri), checks=[
+            self.check('length(value)', 15)
+        ])
+
+        self.cmd('vm monitor log show -n {vm} -g {rg} -q "Perf"')
 
 
 class VMBootDiagnostics(ScenarioTest):
@@ -1412,7 +1540,7 @@ class VMSSExtensionInstallTest(ScenarioTest):
                  '--protected-settings "{config_file}" --extension-instance-name {ext_name}')
         self.cmd('vmss extension show --resource-group {rg} --vmss-name {vmss} --name {ext_name}', checks=[
             self.check('name', '{ext_name}'),
-            self.check('type', '{ext_type}')
+            self.check('type1', '{ext_type}')
         ])
         self.cmd('vmss extension delete --resource-group {rg} --vmss-name {vmss} --name {ext_name}')
 
@@ -3459,6 +3587,13 @@ class ProximityPlacementGroupScenarioTest(ScenarioTest):
             self.check('proximityPlacementGroupType', 'Standard')
         ])
 
+        self.cmd('ppg show -g {rg} -n {ppg1} --include-colocation-status', checks=[
+            self.check('name', '{ppg1}'),
+            self.check('location', '{loc}'),
+            self.check('proximityPlacementGroupType', 'Standard'),
+            self.exists('colocationStatus')
+        ])
+
         self.cmd('ppg create -n {ppg2} -t ultra -g {rg}', checks=[
             self.check('name', '{ppg2}'),
             self.check('location', '{loc}'),
@@ -4090,6 +4225,129 @@ class VMCreateAutoCreateSubnetScenarioTest(ScenarioTest):
 
         self.cmd('network vnet show --resource-group {rg} --name {vnet}', checks=[
             self.check('subnets[0].name', '{vm}Subnet')
+        ])
+
+
+class VMSSAutomaticRepairsScenarioTest(ScenarioTest):
+
+    @ResourceGroupPreparer(name_prefix='cli_test_vmss_create_automatic_repairs_with_health_probe_')
+    def test_vmss_create_automatic_repairs_with_health_probe(self, resource_group):
+        self.kwargs.update({
+            'vmss': 'vmss1',
+            'lb': 'lb1',
+            'probe': 'probe',
+            'lbrule': 'lbrule'
+        })
+
+        # Test raise error if not provide health probe or load balance
+        with self.assertRaises(CLIError):
+            self.cmd('vmss create -g {rg} -n {vmss} --image UbuntuLTS --automatic-repairs-grace-period 30')
+        with self.assertRaises(CLIError):
+            self.cmd('vmss create -g {rg} -n {vmss} --image UbuntuLTS --load-balancer {lb} --automatic-repairs-grace-period 30')
+        with self.assertRaises(CLIError):
+            self.cmd('vmss create -g {rg} -n {vmss} --image UbuntuLTS --health-probe {probe} --automatic-repairs-grace-period 30')
+
+        # Prepare health probe
+        self.cmd('network lb create -g {rg} -n {lb}')
+        self.cmd('network lb probe create -g {rg} --lb-name {lb} -n {probe} --protocol Tcp --port 80')
+        self.cmd('network lb rule create -g {rg} --lb-name {lb} -n {lbrule} --probe-name {probe} --protocol Tcp --frontend-port 80 --backend-port 80')
+        # Test enable automatic repairs with a health probe when create vmss
+        self.cmd('vmss create -g {rg} -n {vmss} --image UbuntuLTS --load-balancer {lb} --health-probe {probe} --automatic-repairs-grace-period 30',
+                 checks=[
+                     self.check('vmss.automaticRepairsPolicy.enabled', True),
+                     self.check('vmss.automaticRepairsPolicy.gracePeriod', 'PT30M')
+                 ])
+
+    @ResourceGroupPreparer(name_prefix='cli_test_vmss_update_automatic_repairs_with_health_probe_')
+    def test_vmss_update_automatic_repairs_with_health_probe(self, resource_group):
+        self.kwargs.update({
+            'vmss': 'vmss1',
+            'probe': 'probe',
+            'lbrule': 'lbrule'
+        })
+
+        # Prepare vmss
+        self.cmd('vmss create -g {rg} -n {vmss} --image UbuntuLTS')
+
+        # Validate automatic repairs parameters
+        with self.assertRaises(CLIError):
+            self.cmd(
+                'vmss update -g {rg} -n {vmss} --enable-automatic-repairs false --automatic-repairs-grace-period 30')
+        with self.assertRaises(CLIError):
+            self.cmd('vmss update -g {rg} -n {vmss} --enable-automatic-repairs true')
+
+        # Prepare health probe
+        self.kwargs['probe_id'] = self.cmd(
+            'network lb probe create -g {rg} --lb-name {vmss}LB -n {probe} --protocol Tcp --port 80'
+        ).get_output_in_json()['id']
+        self.cmd(
+            'network lb rule create -g {rg} --lb-name {vmss}LB -n {lbrule} --probe-name {probe} --protocol Tcp '
+            '--frontend-port 80 --backend-port 80'
+        )
+        # Test enable automatic repairs with a health probe when update vmss
+        self.cmd('vmss update -g {rg} -n {vmss} --set virtualMachineProfile.networkProfile.healthProbe.id={probe_id}',
+                 checks=[
+                     self.check('virtualMachineProfile.networkProfile.healthProbe.id', self.kwargs['probe_id'])
+                 ])
+        self.kwargs['instance_ids'] = ' '.join(
+            self.cmd('vmss list-instances -g {rg} -n {vmss} --query "[].instanceId"').get_output_in_json()
+        )
+        self.cmd('vmss update-instances -g {rg} -n {vmss} --instance-ids {instance_ids}')
+        self.cmd('vmss update -g {rg} -n {vmss} --enable-automatic-repairs true --automatic-repairs-grace-period 30',
+                 checks=[
+                     self.check('automaticRepairsPolicy.enabled', True),
+                     self.check('automaticRepairsPolicy.gracePeriod', 'PT30M')
+                 ])
+
+    @ResourceGroupPreparer(name_prefix='cli_test_vmss_update_automatic_repairs_with_health_extension_')
+    def test_vmss_update_automatic_repairs_with_health_extension(self, resource_group):
+        self.kwargs.update({
+            'vmss': 'vmss1'
+        })
+
+        # Prepare vmss
+        self.cmd('vmss create -g {rg} -n {vmss} --image UbuntuLTS')
+
+        # Prepare health extension
+        _, settings_file = tempfile.mkstemp()
+        with open(settings_file, 'w') as outfile:
+            json.dump({
+                "port": 80,
+                "protocol": "http",
+                "requestPath": "/"
+            }, outfile)
+        settings_file = settings_file.replace('\\', '\\\\')
+        self.kwargs['settings'] = settings_file
+        self.cmd(
+            'vmss extension set -g {rg} --vmss-name {vmss} '
+            '--name ApplicationHealthLinux --version 1.0 '
+            '--publisher Microsoft.ManagedServices '
+            '--settings {settings}'
+        )
+
+        # Test enable automatic repairs with a health extension when update vmss
+        self.kwargs['instance_ids'] = ' '.join(
+            self.cmd('vmss list-instances -g {rg} -n {vmss} --query "[].instanceId"').get_output_in_json()
+        )
+        self.cmd('vmss update-instances -g {rg} -n {vmss} --instance-ids {instance_ids}')
+        self.cmd('vmss update -g {rg} -n {vmss} --enable-automatic-repairs true --automatic-repairs-grace-period 30',
+                 checks=[
+                     self.check('automaticRepairsPolicy.enabled', True),
+                     self.check('automaticRepairsPolicy.gracePeriod', 'PT30M')
+                 ])
+
+
+class VMCreateNSGRule(ScenarioTest):
+
+    @ResourceGroupPreparer(name_prefix='cli_test_vm_create_nsg_rule_')
+    def test_vm_create_nsg_rule(self, resource_group):
+        self.kwargs.update({
+            'vm': 'vm1'
+        })
+
+        self.cmd('vm create -g {rg} -n {vm} --image centos --nsg-rule NONE')
+        self.cmd('network nsg show -g {rg} -n {vm}NSG', checks=[
+            self.check('securityRules', '[]')
         ])
 
 
