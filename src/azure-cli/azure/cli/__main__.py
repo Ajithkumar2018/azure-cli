@@ -37,6 +37,8 @@ telemetry.set_application(az_cli, ARGCOMPLETE_ENV_NAME)
 try:
     telemetry.start()
     start_time = timeit.default_timer()
+    from os import getenv
+    print("AZ_INSTALLER: {}".format(getenv('AZ_INSTALLER')))
 
     exit_code = cli_main(az_cli, sys.argv[1:])
 
